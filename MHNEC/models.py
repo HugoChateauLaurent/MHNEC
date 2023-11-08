@@ -16,6 +16,7 @@ def _mean_IDW_kernel(key, keys, opts):
 
 def _norm_kNN_separator(weights, opts):
     top_values, top_idxs = torch.topk(weights, opts["num_neighbours"], dim=1)
+    print(top_idxs.shape, "iiiiiiii")
     accessed = torch.zeros(weights.shape, dtype=int)
     accessed.scatter_(1, top_idxs, 1)
     weights[accessed==0] = 0
@@ -23,7 +24,8 @@ def _norm_kNN_separator(weights, opts):
     return weights, accessed, top_idxs
     
 def _softmax_separator(weights, opts):
-    return F.softmax(weights * opts["beta"], axis=1)
+    weights = F.softmax(weights * opts["beta"], dim=1)
+    return weights, -weights, None
 
 # k-nearest neighbours search
 def _knn_search(queries, data, k, return_neighbours=False, res=None):
@@ -91,7 +93,7 @@ class DND(StaticDictionary):
   # Lookup function
   def forward(self, key, learning=False):
     
-    self.separator = _norm_kNN_separator
+    self.separator = _softmax_separator
     
     # Use weighted average return over k nearest neighbours
     weights = self.kernel(key, self.keys, self.kernel_opts)  # Apply kernel function
@@ -100,12 +102,17 @@ class DND(StaticDictionary):
     values = np.repeat(self.values[np.newaxis,:,:], key.shape[0], axis=0) # Retrieve values
     values = torch.tensor(values, requires_grad=True).to(device=key.device)
     output = torch.sum(weights * values[:,:,0], dim=1).unsqueeze(-1)
-    values = values[accessed==1].reshape(key.shape[0], idxs.shape[1], 1)
+    if idxs is not None:
+      values = values[accessed>0].reshape(key.shape[0], idxs.shape[1], 1)
 
     # Update last access (updated for all lookups: acting, return calculation and training)
     self.last_access += (1-accessed).sum(axis=0)
     if learning:
-      neighbours = self.keys.unsqueeze(0).repeat(key.shape[0],1,1)[accessed==1].reshape(key.shape[0], idxs.shape[1], self.keys.shape[-1])
+      if idxs is not None:
+        neighbours = self.keys.unsqueeze(0).repeat(key.shape[0],1,1)[accessed>0].reshape(key.shape[0], idxs.shape[1], self.keys.shape[-1])
+      else:
+        idxs = torch.arange(weights.shape[1]).unsqueeze(0).repeat(key.shape[0],1)
+        neighbours = self.keys.unsqueeze(0).repeat(key.shape[0],1,1)
       return output, neighbours, values, idxs
     else:
       return output
@@ -129,8 +136,8 @@ class DND(StaticDictionary):
     # Update exact match with Q-learning
     if num_matches > 0:
       idxs_match_idxs = idxs[match_idxs]
-      self.keys[idxs_match_idxs] = keys[match_idxs] # Update keys (embedding may have changed)
-      self.values[idxs_match_idxs] += self.alpha * (values[match_idxs] - self.values[idxs_match_idxs])
+      self.keys[idxs_match_idxs] = torch.from_numpy(keys[match_idxs]) # Update keys (embedding may have changed)
+      self.values[idxs_match_idxs] += self.alpha * (torch.from_numpy(values[match_idxs]) - self.values[idxs_match_idxs])
       # self.rmsprop_keys_square_avg[idxs_match_idxs], self.rmsprop_values_square_avg[idxs_match_idxs] = 0, 0  # TODO: Reset RMSprop stats here too?
       self.last_access[idxs_match_idxs] = 0
     
