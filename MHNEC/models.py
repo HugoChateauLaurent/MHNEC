@@ -22,6 +22,9 @@ def _norm_kNN_separator(weights, opts):
     weights /= weights.sum(dim=1, keepdim=True)
     return weights, accessed, top_idxs
     
+def _softmax_separator(weights, opts):
+    return F.softmax(weights * opts["beta"], axis=1)
+
 # k-nearest neighbours search
 def _knn_search(queries, data, k, return_neighbours=False, res=None):
   num_queries, dim = queries.shape
@@ -67,7 +70,7 @@ class StaticDictionary(nn.Module):
     self.num_neighbours = args.num_neighbours
     self.kernel = _mean_IDW_kernel
     self.kernel_opts = {'delta': args.kernel_delta}
-    self.separator_opts = {'num_neighbours': args.num_neighbours}
+    self.separator_opts = {'num_neighbours': args.num_neighbours, "beta": args.separation_beta}
     
     self.keys = 1e6 * torch.ones((args.dictionary_capacity, args.key_size), dtype=torch.float32, requires_grad=False).to(device=args.device)  # Add initial keys with very large magnitude values (infinity results in kNN returning -1 as indices)
     self.values = torch.zeros((args.dictionary_capacity, 1), dtype=torch.float32, requires_grad=False).to(device=args.device)
@@ -92,22 +95,17 @@ class DND(StaticDictionary):
     
     # Use weighted average return over k nearest neighbours
     weights = self.kernel(key, self.keys, self.kernel_opts)  # Apply kernel function
-    weights /= weights.sum(dim=1, keepdim=True)  # Normalise weights
     weights, accessed, idxs = self.separator(weights, self.separator_opts) # Apply separation function
-
-    print(weights.shape, accessed.shape, self.keys.shape)
-
-    neighbours = self.keys.unsqueeze(0).repeat(weights.shape[0],1,1)[accessed==1]
-    print(neighbours.shape)
-    print(self.keys.unsqueeze(0).repeat(weights.shape[0],1,1).shape)
 
     values = np.repeat(self.values[np.newaxis,:,:], key.shape[0], axis=0) # Retrieve values
     values = torch.tensor(values, requires_grad=True).to(device=key.device)
     output = torch.sum(weights * values[:,:,0], dim=1).unsqueeze(-1)
+    values = values[accessed==1].reshape(key.shape[0], idxs.shape[1], 1)
 
     # Update last access (updated for all lookups: acting, return calculation and training)
     self.last_access += (1-accessed).sum(axis=0)
     if learning:
+      neighbours = self.keys.unsqueeze(0).repeat(key.shape[0],1,1)[accessed==1].reshape(key.shape[0], idxs.shape[1], self.keys.shape[-1])
       return output, neighbours, values, idxs
     else:
       return output
