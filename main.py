@@ -8,7 +8,7 @@ from tqdm import tqdm
 import torch
 from torch import optim
 
-from agents import MFECAgent, NECAgent
+from agents import NECAgent
 from envs import AtariEnv
 from memory import ExperienceReplay
 from test import test

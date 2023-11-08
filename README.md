@@ -35,6 +35,9 @@ Notes about this codebase based on conversations with Robert Kirk
 - Key/value gradients for the DND are taken from the first instance of each updated key, but averaging would make more sense.
 - The gradients for the keys and values in the DND do not get applied properly (effectively, the gradients are zero) - this is a bug! Despite the bug, this codebase can still reproduce the results from the NEC paper (hence those updates may not be important).
 
+### MHN Notes
+- TODO: last accessed
+
 
 ## Acknowledgements
 

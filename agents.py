@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from torch import nn
 from torch.nn import functional as F 
-from models import MFEC, NEC
+from models import NEC
 from optimisers import RMSprop
 
 
@@ -65,17 +65,6 @@ class _EpisodicAgent(_Agent):
   def evaluate_qs(self, states):
     with torch.no_grad():
       return self.online_net(states)[0]
-
-
-class MFECAgent(_EpisodicAgent):
-  def __init__(self, args, observation_shape, action_space, hash_size):
-    super().__init__(args)
-    self.action_space = action_space
-
-    self.online_net = MFEC(args, observation_shape, action_space, hash_size).to(device=args.device)
-    if args.model and os.path.isfile(args.model):
-      self.online_net.load_state_dict(torch.load(args.model, map_location='cpu'))  # Always load tensors onto CPU by default, will shift to GPU if necessary
-    self.online_net.train()
 
 
 class NECAgent(_EpisodicAgent):
