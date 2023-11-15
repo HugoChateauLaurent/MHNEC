@@ -142,6 +142,7 @@ class DND(StaticDictionary):
     
     # Otherwise add new states and n-step returns, replacing least recently updated entries
     if num_non_matches > 0:
+      print("ldskjfl", num_non_matches, num_matches)
       _, lru_idxs = torch.topk(self.last_access, num_non_matches)  # Find top-k LRU items
       self.keys[lru_idxs] = torch.from_numpy(keys[non_match_idxs]).to(device=self.keys.device)
       self.values[lru_idxs] =  torch.from_numpy(values[non_match_idxs]).to(device=self.values.device)
